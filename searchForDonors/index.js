@@ -11,6 +11,12 @@ AWS
 
 exports.handler = async(event) => {
 
+    //in this function we need ot do a geo search based on the incoming latitude/longitudes
+    //of the donor.  then we need to either send out no donors found message or a donors found
+    //along with a list of the donor phone numbers so we can alert them later.  i believe we need
+    //to save that list of donors to the request record so we know who we contacted later.  we may
+    //need that list in order to send updates and cancellation notifications
+
     let entity = event.entity;
     let entityKey = event.key;
     let entityLocation = JSON.parse(event.location);
