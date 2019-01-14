@@ -1,5 +1,5 @@
-const AWS = require('aws-sdk');
 const ddbGeo = require('dynamodb-geo');
+const AWS = require('aws-sdk');
 
 AWS
     .config
@@ -72,7 +72,7 @@ exports.handler = async(event) => {
     let msg_org = JSON.parse(record.Message);
     console.log("SUCCESS PARSE 1");
     console.log(msg_org);
-    let msg_obj = JSON.parse(msg_org);
+    let msg_obj = msg_org;
     console.log("SUCCESS PARSE 2");
 
     console.log(msg_obj);
@@ -85,13 +85,16 @@ exports.handler = async(event) => {
 
     // let entity = event.entity; let entityKey = event.key; let entityLocation =
     // JSON.parse(event.location); let params = JSON.parse(event.params);
-
     const ddb = new AWS.DynamoDB({endpoint: "dynamodb.us-west-1.amazonaws.com"});
-    const config = new ddbGeo.GeoDataManagerConfiguration(ddb, "volunteers");
+
+    // Configuration for a new instance of a GeoDataManager. Each GeoDataManager
+    // instance represents a table
+    const config = new ddbGeo.GeoDataManagerConfiguration(ddb, 'volunteers');
     const myGeoTableManager = new ddbGeo.GeoDataManager(config);
 
-    // Querying 100km from Cambridge, UK
-    myGeoTableManager.queryRadius({
+    // Instantiate the table manager
+
+    await myGeoTableManager.queryRadius({
         RadiusInMeter: 5000,
         CenterPoint: {
             latitude: lat,
@@ -99,8 +102,26 @@ exports.handler = async(event) => {
         }
     })
     // Print the results, an array of DynamoDB.AttributeMaps
-        .then((results) => {
+        .then(async(results) => {
+        await publishSNSMessage({
+            "from": msg_obj.from,
+            "to": msg_obj.to,
+            "params": (results.length === 0)
+                ? {
+                    "type": "no.donors.in.area"
+                }
+                : {
+                    "type": "donors.in.area",
+                    "request": results
+                }
+        }, (results.length === 0)
+            ? "no.donors.in.area"
+            : "donors.in.area").then((data) => {
+            return;
+        });
+
         console.log(results);
+        return results;
     });
 
 };
