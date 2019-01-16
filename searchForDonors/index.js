@@ -9,6 +9,12 @@ AWS
     .config
     .update({region: "us-west-1"});
 
+async function asyncForEach(array, callback) {
+    for (let index = 0; index < array.length; index++) {
+        await callback(array[index], index, array);
+    }
+}
+
 async function publishSNSMessage(message, event_type) {
 
     var params = {
@@ -116,7 +122,27 @@ exports.handler = async(event) => {
                 }
         }, (results.length === 0)
             ? "no.donors.in.area"
-            : "donors.in.area").then((data) => {
+            : "donors.in.area").then(async(data) => {
+            //now let's notify the donors we need an asynch foreach
+            if (results.length > 0) {
+
+                await asyncForEach(results, donor => {
+                    publishSNSMessage({
+                        "from": msg_obj.from,
+                        "to": msg_obj.to,
+                        "params": {
+                            "type": "notify.donors.new.request",
+                            "donor": donor.rangeKey.S
+                        }
+                    }, "notify.donors.new.request").then(() => {
+                        return;
+                    }).catch(error => {
+                        console.log(error);
+                    });
+                });
+
+            }
+
             return;
         });
 

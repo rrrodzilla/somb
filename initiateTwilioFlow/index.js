@@ -9,6 +9,7 @@ exports.handler = async(event) => {
 
     var record = JSON.parse(event.Records[0].body);
     let event_type = record.MessageAttributes["event.type"].Value;
+    let flow_sid = record.MessageAttributes["flow.sid"].Value;
 
     console.log("INCOMING RECORD.MESSAGE: ");
     console.log("EVENT TYPE: " + event_type);
@@ -26,7 +27,7 @@ exports.handler = async(event) => {
     try {
         var smsMsg = client
             .studio
-            .flows("FW5aa2094eef2a5efade132ed9a4998d6f")
+            .flows(flow_sid)
             .executions
             .create({to: msg_obj.to, from: msg_obj.from, parameters: msg_obj.params});
         await smsMsg.then(execution => {
