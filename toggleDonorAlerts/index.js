@@ -70,11 +70,12 @@ exports.handler = async(event) => {
     // list in order to send updates and cancellation notifications let's parse this
     // incoming record let's parse this incoming record
     await asyncForEach(event.Records, async(record) => {
+        console.log("INCOMING RECORD.MESSAGE: ");
+        console.log(record);
         let message = JSON.parse(record.body);
         let event_type = record.messageAttributes["event.type"].stringValue;
         let flow_sid = record.messageAttributes["event.flow"].stringValue;
 
-        console.log("INCOMING RECORD.MESSAGE: ");
         console.log("EVENT TYPE: " + event_type);
         //need to parse twice since the json gets escaped twice
 
@@ -89,30 +90,38 @@ exports.handler = async(event) => {
         // instance represents a table
         const config = new ddbGeo.GeoDataManagerConfiguration(ddb, message.entity);
         const myGeoTableManager = new ddbGeo.GeoDataManager(config);
-
+        console.log("Toggling " + message.params.alerts.BOOL + " to " + !message.params.alerts.BOOL);
         // Instantiate the table manager
-        await myGeoTableManager.putPoint({
+        await myGeoTableManager.updatePoint({
             RangeKeyValue: {
                 S: message.to
             }, // Use this to ensure uniqueness of the hash/range pairs.
             GeoPoint: { // An object specifying latitutde and longitude as plain numbers. Used to build the geohash, the hashkey and geojson data
-                latitude: message.lat,
-                longitude: message.lon
+                latitude: message.params.lat,
+                longitude: message.params.lon
             },
-                PutItemInput: { // Passed through to the underlying DynamoDB.putItem request. TableName is filled in for you.
-                    Item: message.params
-                    // ... Anything else to pass through to `putItem`, eg ConditionExpression
+            UpdateItemInput: { // Passed through to the underlying DynamoDB.putItem request. TableName is filled in for you.
+                UpdateExpression: 'SET alerts = :alerts',
+                ExpressionAttributeValues: {
+                    ':alerts': {
+                        BOOL: !message.params.alerts.BOOL
+                    }
+                }
+                // ... Anything else to pass through to `putItem`, eg ConditionExpression
                 }
             })
             .promise()
             .then(async() => {
+                let toggleStatus = (!message.params.alerts.BOOL)
+                    ? "on"
+                    : "off";
                 await publishSNSMessage({
                     "from": message.from,
                     "to": message.to,
                     "params": {
-                        "type": "new.donor.added"
+                        "type": "donor.alerts.toggled." + toggleStatus
                     }
-                }, "new.donor.added", flow_sid).then((data) => {
+                }, "donor.alerts.toggled." + toggleStatus, flow_sid).then((data) => {
                     return;
                 });
             });

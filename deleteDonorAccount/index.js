@@ -81,39 +81,25 @@ exports.handler = async(event) => {
 
         var params = {
             TableName: "volunteers",
-            IndexName: "rangeKey-index",
-            KeyConditionExpression: "rangeKey = :phone_number",
-            ExpressionAttributeValues: {
-                ":phone_number": message.to
+            Key: {
+                hashKey: parseInt(message.hashKey),
+                rangeKey: message.rangeKey
             }
         };
 
         let queryPromise = docClient
-            .query(params)
+            .delete(params)
             .promise();
 
         await queryPromise.then(async(results) => {
             //then send a message based on whether something was found or not
-            let geo = (results.Items.length === 0)
-                ? null
-                : JSON.parse(results.Items[0].geoJson);
-            console.log(geo);
             await publishSNSMessage({
                 "from": message.from,
                 "to": message.to,
-                "params": (results.Items.length === 0)
-                    ? {
-                        "type": "donor.does.not.exist"
-                    }
-                    : {
-                        "type": "donor.exists",
-                        "request": results.Items[0],
-                        "lat": geo.coordinates[1],
-                        "lon": geo.coordinates[0]
-                    }
-            }, (results.Items.length === 0)
-                ? "donor.does.not.exist"
-                : "donor.exists", flow_sid).then((data) => {
+                "params": {
+                    "type": "donor.account.removed"
+                }
+            }, "donor.account.removed", flow_sid).then((data) => {
                 return;
             });
 
