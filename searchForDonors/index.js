@@ -15,7 +15,7 @@ async function asyncForEach(array, callback) {
     }
 }
 
-async function publishSNSMessage(message, event_type) {
+async function publishSNSMessage(message, event_type, flow_sid) {
 
     var params = {
         Message: JSON.stringify(message),
@@ -25,6 +25,10 @@ async function publishSNSMessage(message, event_type) {
             "event.type": {
                 DataType: "String",
                 StringValue: event_type
+            },
+            "event.flow": {
+                DataType: "String",
+                StringValue: flow_sid
             }
         }
     };
@@ -65,29 +69,17 @@ exports.handler = async(event) => {
     // to the request record so we know who we contacted later.  we may need that
     // list in order to send updates and cancellation notifications let's parse this
     // incoming record
-    var record = JSON.parse(event.Records[0].body);
-    console.log("INCOMING RECORD: ");
-    console.log(record);
-    console.log('event.type');
-    //event type should be open.new.request
-    let event_type = record.MessageAttributes["event.type"].Value;
+    //let's parse this incoming record
+    let message = JSON.parse(event.Records[0].body);
+    let event_type = event.Records[0].messageAttributes["event.type"].stringValue;
+    let flow_sid = event.Records[0].messageAttributes["event.flow"].stringValue;
+
     console.log("INCOMING RECORD.MESSAGE: ");
     console.log("EVENT TYPE: " + event_type);
-
     //need to parse twice since the json gets escaped twice
-    let msg_org = JSON.parse(record.Message);
-    console.log("SUCCESS PARSE 1");
-    console.log(msg_org);
-    let msg_obj = msg_org;
-    console.log("SUCCESS PARSE 2");
 
-    console.log(msg_obj);
-
-    let lat = parseFloat(msg_org.params.request.lat);
-    let lon = parseFloat(msg_org.params.request.lon);
-
-    let msg = event.message;
-    console.log(msg);
+    console.log("message: ");
+    console.log(message);
 
     // let entity = event.entity; let entityKey = event.key; let entityLocation =
     // JSON.parse(event.location); let params = JSON.parse(event.params);
@@ -103,15 +95,15 @@ exports.handler = async(event) => {
     await myGeoTableManager.queryRadius({
         RadiusInMeter: 5000,
         CenterPoint: {
-            latitude: lat,
-            longitude: lon
+            latitude: message.request.lat,
+            longitude: message.request.lon
         }
     })
     // Print the results, an array of DynamoDB.AttributeMaps
         .then(async(results) => {
         await publishSNSMessage({
-            "from": msg_obj.from,
-            "to": msg_obj.to,
+            "from": message.from,
+            "to": message.to,
             "params": (results.length === 0)
                 ? {
                     "type": "no.donors.in.area"
@@ -122,19 +114,19 @@ exports.handler = async(event) => {
                 }
         }, (results.length === 0)
             ? "no.donors.in.area"
-            : "donors.in.area").then(async(data) => {
+            : "donors.in.area", flow_sid).then(async(data) => {
             //now let's notify the donors we need an asynch foreach
             if (results.length > 0) {
 
                 await asyncForEach(results, donor => {
                     publishSNSMessage({
-                        "from": msg_obj.from,
-                        "to": msg_obj.to,
+                        "from": "+12062029844",
+                        "to": donor.rangeKey.S,
                         "params": {
                             "type": "notify.donors.new.request",
                             "donor": donor.rangeKey.S
                         }
-                    }, "notify.donors.new.request").then(() => {
+                    }, "notify.donors.new.request", "FW74b64bf4d64b130de3f5857b20bfe6e8").then(() => {
                         return;
                     }).catch(error => {
                         console.log(error);

@@ -1,12 +1,8 @@
-//in this function we want to orchestrate updating the status of this open 
-//request while also notifying anybody who has responded to this that the issue has been cancelled
-//then we need to send a notification to the original requestor that the issue
-//is now closed
-
-//first update status to cancelled
-//listen for cancelled event
-//notify users
-//notify requestor
+// in this function we want to orchestrate updating the status of this open
+// request while also notifying anybody who has responded to this that the issue
+// has been cancelled then we need to send a notification to the original
+// requestor that the issue is now closed first update status to cancelled
+// listen for cancelled event notify users notify requestor
 
 const AWS = require('aws-sdk');
 AWS
@@ -17,7 +13,7 @@ AWS
     .config
     .update({region: "us-west-1"});
 
-async function publishSNSMessage(message, event_type) {
+async function publishSNSMessage(message, event_type, flow_sid) {
 
     var params = {
         Message: JSON.stringify(message),
@@ -27,7 +23,12 @@ async function publishSNSMessage(message, event_type) {
             "event.type": {
                 DataType: "String",
                 StringValue: event_type
+            },
+            "event.flow": {
+                DataType: "String",
+                StringValue: flow_sid
             }
+
         }
     };
 
@@ -66,6 +67,7 @@ exports.handler = async(event) => {
     console.log(record);
     console.log('event.type');
     let event_type = record.MessageAttributes["event.type"].Value;
+    let flow_sid = record.MessageAttributes["event.flow"].Value;
     console.log("INCOMING RECORD.MESSAGE: ");
     console.log("EVENT TYPE: " + event_type);
 
@@ -116,7 +118,8 @@ exports.handler = async(event) => {
                 : {
                     "type": "open.issue.found",
                     "request": results.Items[0]
-                }
+                },
+            flow_sid
         }, (results.Items.length === 0)
             ? "open.issue.not.found"
             : "open.issue.found").then((data) => {

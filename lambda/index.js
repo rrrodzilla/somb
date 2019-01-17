@@ -1,7 +1,7 @@
 const AWSXRay = require('aws-xray-sdk-core');
 const AWS = AWSXRay.captureAWS(require('aws-sdk'));
 
-async function publishSNSMessage(message, event_type, issue_status) {
+async function publishSNSMessage(message, event_type, issue_status, flow_sid) {
 
     var params = {
         Message: JSON.stringify(message),
@@ -15,6 +15,10 @@ async function publishSNSMessage(message, event_type, issue_status) {
             "status": {
                 DataType: "String",
                 StringValue: issue_status
+            },
+            "event.flow": {
+                DataType: "String",
+                StringValue: flow_sid
             }
         }
     };
@@ -56,40 +60,29 @@ exports.handler = async(event) => {
         .config
         .update({region: "us-west-1"});
 
-    console.log('event');
-    console.log(event);
+    console.log("INCOMING RECORD.MESSAGE: ");
+    console.log(event.Records[0]);
+    
+    //let's parse this incoming record
+    let message = JSON.parse(event.Records[0].body);
+    let event_type = event.Records[0].messageAttributes["event.type"].stringValue;
+    let flow_sid = event.Records[0].messageAttributes["event.flow"].stringValue;
 
-    var record = JSON.parse(event.Records[0].body);
-    console.log("INCOMING RECORD: ");
-    console.log(record);
-    console.log('event.type');
-    let event_type = record.MessageAttributes["event.type"].Value;
     console.log("INCOMING RECORD.MESSAGE: ");
     console.log("EVENT TYPE: " + event_type);
-
-    console.log("INCOMING RECORD.MESSAGE: ");
-    console.log(record.Message);
-
     //need to parse twice since the json gets escaped twice
-    console.log("let msg_org = JSON.parse(record.Message)");
-    let msg_org = JSON.parse(record.Message);
-    console.log(msg_org);
-    console.log("let msg_obj = JSON.parse(msg_org)");
-    let msg_obj = JSON.parse(msg_org);
-    console.log(msg_obj);
 
-    // console.log("HERE COMES THE LOCATION!"); console.log(msg_obj);
-    // console.log("lat: " + msg_obj.params.lat); console.log("lon: " +
-    // msg_obj.params.lon);
+    console.log("message: ");
+    console.log(message);
 
-    let entity = msg_obj.entity;
-    let entityKey = msg_obj.key;
+    let entity = message.entity;
+    let entityKey = message.key;
     //if the timestamp doesn't exist, then this is a new record and we should add it
     entityKey.timestamp = (!entityKey.timestamp)
-        ? parseInt((new Date(record.Timestamp).getTime() / 1000).toFixed(0))
+        ? parseInt(event.Records[0].attributes.SentTimestamp)
         : parseInt(entityKey.timestamp);
 
-    let params = msg_obj.params;
+    let params = message.params;
 
     let update_expression = "SET ";
     let expression_attribute_names = {};
@@ -98,7 +91,7 @@ exports.handler = async(event) => {
     let current_element = 0;
 
     Object
-        .keys(msg_obj.params)
+        .keys(message.params)
         .forEach((key) => {
             current_element++;
             let comma = (current_element === Object.keys(params).length)
@@ -155,13 +148,13 @@ exports.handler = async(event) => {
             }
 
             await publishSNSMessage({
-                "from": msg_obj.from,
-                "to": msg_obj.to,
+                "from": message.from,
+                "to": message.to,
                 "params": {
                     "type": response_event_type,
                     "request": item.Attributes
                 }
-            }, response_event_type, item.Attributes.status).then(() => {
+            }, response_event_type, item.Attributes.status, flow_sid).then(() => {
                 console.log(entity + " update");
                 console.log(item);
                 return item;

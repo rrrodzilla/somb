@@ -7,7 +7,7 @@ AWS
     .config
     .update({region: "us-west-1"});
 
-async function publishSNSMessage(message, event_type) {
+async function publishSNSMessage(message, event_type, flow_sid) {
 
     var params = {
         Message: JSON.stringify(message),
@@ -17,6 +17,10 @@ async function publishSNSMessage(message, event_type) {
             "event.type": {
                 DataType: "String",
                 StringValue: event_type
+            },
+            "event.flow": {
+                DataType: "String",
+                StringValue: flow_sid
             }
         }
     };
@@ -48,28 +52,28 @@ async function publishSNSMessage(message, event_type) {
 
 }
 
+async function asyncForEach(array, callback) {
+    for (let index = 0; index < array.length; index++) {
+        await callback(array[index], index, array);
+    }
+}
+
+
 exports.handler = async(event) => {
 
+    
+
     //let's parse this incoming record
-    var record = JSON.parse(event.Records[0].body);
-    console.log("INCOMING RECORD: ");
-    console.log(record);
-    console.log('event.type');
-    let event_type = record.MessageAttributes["event.type"].Value;
+    let message = JSON.parse(event.Records[0].body);
+    let event_type = event.Records[0].messageAttributes["event.type"].stringValue;
+    let flow_sid = event.Records[0].messageAttributes["event.flow"].stringValue;
+
     console.log("INCOMING RECORD.MESSAGE: ");
     console.log("EVENT TYPE: " + event_type);
-
     //need to parse twice since the json gets escaped twice
-    let msg_org = JSON.parse(record.Message);
-    console.log("SUCCESS PARSE 1");
-    console.log(msg_org);
-    let msg_obj = JSON.parse(msg_org);
-    console.log("SUCCESS PARSE 2");
 
-    console.log(msg_obj);
-
-    let msg = event.message;
-    console.log(msg);
+    console.log("message: ");
+    console.log(message);
 
     //we want to check the database for an existing open issue for this user
 
@@ -82,7 +86,7 @@ exports.handler = async(event) => {
         IndexName: "phone_number-status-index",
         KeyConditionExpression: "phone_number = :phone_number AND #request_status = :status ",
         ExpressionAttributeValues: {
-            ":phone_number": msg_obj.to,
+            ":phone_number": message.to,
             ":status": "open"
         },
         ExpressionAttributeNames: {
@@ -97,8 +101,8 @@ exports.handler = async(event) => {
     await queryPromise.then(async(results) => {
         //then send a message based on whether something was found or not
         await publishSNSMessage({
-            "from": msg_obj.from,
-            "to": msg_obj.to,
+            "from": message.from,
+            "to": message.to,
             "params": (results.Items.length === 0)
                 ? {
                     "type": "open.issue.not.found"
@@ -109,7 +113,7 @@ exports.handler = async(event) => {
                 }
         }, (results.Items.length === 0)
             ? "open.issue.not.found"
-            : "open.issue.found").then((data) => {
+            : "open.issue.found", flow_sid).then((data) => {
             return;
         });
 

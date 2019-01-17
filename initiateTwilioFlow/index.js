@@ -7,21 +7,20 @@ const FLOWS = {
 };
 exports.handler = async(event) => {
 
-    var record = JSON.parse(event.Records[0].body);
-    let event_type = record.MessageAttributes["event.type"].Value;
-    let flow_sid = record.MessageAttributes["flow.sid"].Value;
+    //let's parse this incoming record
+    let message = JSON.parse(event.Records[0].body);
+    let event_type = event.Records[0].messageAttributes["event.type"].stringValue;
+    let flow_sid = event.Records[0].messageAttributes["event.flow"].stringValue;
 
     console.log("INCOMING RECORD.MESSAGE: ");
     console.log("EVENT TYPE: " + event_type);
-
     //need to parse twice since the json gets escaped twice
-    let msg_org = JSON.parse(record.Message);
-    let msg_obj = msg_org;
-    console.log("msg_obj: ");
-    console.log(msg_obj);
+
+    console.log("message: ");
+    console.log(message);
 
     if (event_type == "request.status.updated") 
-        msg_obj.params.type = "open.request.cancelled";
+    message.params.type = "open.request.cancelled";
     
     console.log("trying studio flow call");
     try {
@@ -29,7 +28,7 @@ exports.handler = async(event) => {
             .studio
             .flows(flow_sid)
             .executions
-            .create({to: msg_obj.to, from: msg_obj.from, parameters: msg_obj.params});
+            .create({to: message.to, from: message.from, parameters: message.params});
         await smsMsg.then(execution => {
             return;
         });
