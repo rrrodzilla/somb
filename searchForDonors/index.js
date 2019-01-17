@@ -68,78 +68,82 @@ exports.handler = async(event) => {
     // so we can alert them later.  i believe we need to save that list of donors
     // to the request record so we know who we contacted later.  we may need that
     // list in order to send updates and cancellation notifications let's parse this
-    // incoming record
-    //let's parse this incoming record
-    let message = JSON.parse(event.Records[0].body);
-    let event_type = event.Records[0].messageAttributes["event.type"].stringValue;
-    let flow_sid = event.Records[0].messageAttributes["event.flow"].stringValue;
+    // incoming record let's parse this incoming record
 
-    console.log("INCOMING RECORD.MESSAGE: ");
-    console.log("EVENT TYPE: " + event_type);
-    //need to parse twice since the json gets escaped twice
+    await asyncForEach(event.Records, async(record) => {
+        let message = JSON.parse(record.body);
+        let event_type = record.messageAttributes["event.type"].stringValue;
+        let flow_sid = record.messageAttributes["event.flow"].stringValue;
 
-    console.log("message: ");
-    console.log(message);
+        console.log("INCOMING RECORD.MESSAGE: ");
+        console.log("EVENT TYPE: " + event_type);
+        //need to parse twice since the json gets escaped twice
 
-    // let entity = event.entity; let entityKey = event.key; let entityLocation =
-    // JSON.parse(event.location); let params = JSON.parse(event.params);
-    const ddb = new AWS.DynamoDB({endpoint: "dynamodb.us-west-1.amazonaws.com"});
+        console.log("message: ");
+        console.log(message);
 
-    // Configuration for a new instance of a GeoDataManager. Each GeoDataManager
-    // instance represents a table
-    const config = new ddbGeo.GeoDataManagerConfiguration(ddb, 'volunteers');
-    const myGeoTableManager = new ddbGeo.GeoDataManager(config);
+        // let entity = event.entity; let entityKey = event.key; let entityLocation =
+        // JSON.parse(event.location); let params = JSON.parse(event.params);
+        const ddb = new AWS.DynamoDB({endpoint: "dynamodb.us-west-1.amazonaws.com"});
 
-    // Instantiate the table manager
+        // Configuration for a new instance of a GeoDataManager. Each GeoDataManager
+        // instance represents a table
+        const config = new ddbGeo.GeoDataManagerConfiguration(ddb, 'volunteers');
+        const myGeoTableManager = new ddbGeo.GeoDataManager(config);
 
-    await myGeoTableManager.queryRadius({
-        RadiusInMeter: 5000,
-        CenterPoint: {
-            latitude: message.request.lat,
-            longitude: message.request.lon
-        }
-    })
-    // Print the results, an array of DynamoDB.AttributeMaps
-        .then(async(results) => {
-        await publishSNSMessage({
-            "from": message.from,
-            "to": message.to,
-            "params": (results.length === 0)
-                ? {
-                    "type": "no.donors.in.area"
-                }
-                : {
-                    "type": "donors.in.area",
-                    "request": results
-                }
-        }, (results.length === 0)
-            ? "no.donors.in.area"
-            : "donors.in.area", flow_sid).then(async(data) => {
-            //now let's notify the donors we need an asynch foreach
-            if (results.length > 0) {
+        // Instantiate the table manager
 
-                await asyncForEach(results, donor => {
-                    publishSNSMessage({
-                        "from": "+12062029844",
-                        "to": donor.rangeKey.S,
-                        "params": {
-                            "type": "notify.donors.new.request",
-                            "donor": donor.rangeKey.S
-                        }
-                    }, "notify.donors.new.request", "FW74b64bf4d64b130de3f5857b20bfe6e8").then(() => {
-                        return;
-                    }).catch(error => {
-                        console.log(error);
-                    });
-                });
-
+        await myGeoTableManager.queryRadius({
+            RadiusInMeter: 5000,
+            CenterPoint: {
+                latitude: message.params.request.lat,
+                longitude: message.params.request.lon
             }
+        })
+        // Print the results, an array of DynamoDB.AttributeMaps
+            .then(async(results) => {
+            await publishSNSMessage({
+                "from": message.from,
+                "to": message.to,
+                "params": (results.length === 0)
+                    ? {
+                        "type": "no.donors.in.area"
+                    }
+                    : {
+                        "type": "donors.in.area",
+                        "request": results
+                    }
+            }, (results.length === 0)
+                ? "no.donors.in.area"
+                : "donors.in.area", flow_sid).then(async(data) => {
+                //now let's notify the donors we need an asynch foreach
+                if (results.length > 0) {
 
-            return;
+                    await asyncForEach(results, async(donor) => {
+                        await publishSNSMessage({
+                            "from": "+12062029844",
+                            "to": donor.rangeKey.S,
+                            "params": {
+                                "type": "notify.donors.new.request",
+                                "donor": donor.rangeKey.S,
+                                "request": message.params.request
+                            }
+                        }, "notify.donors.new.request", "FW74b64bf4d64b130de3f5857b20bfe6e8").then(() => {
+                            return;
+                        }).catch(error => {
+                            console.log(error);
+                        });
+                    });
+
+                }
+
+                return;
+            });
+
+            console.log(results);
+            return results;
         });
 
-        console.log(results);
-        return results;
     });
 
 };

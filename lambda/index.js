@@ -1,6 +1,12 @@
 const AWSXRay = require('aws-xray-sdk-core');
 const AWS = AWSXRay.captureAWS(require('aws-sdk'));
 
+async function asyncForEach(array, callback) {
+    for (let index = 0; index < array.length; index++) {
+        await callback(array[index], index, array);
+    }
+}
+
 async function publishSNSMessage(message, event_type, issue_status, flow_sid) {
 
     var params = {
@@ -60,113 +66,113 @@ exports.handler = async(event) => {
         .config
         .update({region: "us-west-1"});
 
-    console.log("INCOMING RECORD.MESSAGE: ");
-    console.log(event.Records[0]);
-    
-    //let's parse this incoming record
-    let message = JSON.parse(event.Records[0].body);
-    let event_type = event.Records[0].messageAttributes["event.type"].stringValue;
-    let flow_sid = event.Records[0].messageAttributes["event.flow"].stringValue;
+    await asyncForEach(event.Records, async(record) => {
+        console.log("INCOMING RECORD.MESSAGE: ");
+        console.log(record);
 
-    console.log("INCOMING RECORD.MESSAGE: ");
-    console.log("EVENT TYPE: " + event_type);
-    //need to parse twice since the json gets escaped twice
+        //let's parse this incoming record
+        let message = JSON.parse(record.body);
+        let event_type = record.messageAttributes["event.type"].stringValue;
+        let flow_sid = record.messageAttributes["event.flow"].stringValue;
 
-    console.log("message: ");
-    console.log(message);
+        console.log("INCOMING RECORD.MESSAGE: ");
+        console.log("EVENT TYPE: " + event_type);
+        //need to parse twice since the json gets escaped twice
 
-    let entity = message.entity;
-    let entityKey = message.key;
-    //if the timestamp doesn't exist, then this is a new record and we should add it
-    entityKey.timestamp = (!entityKey.timestamp)
-        ? parseInt(event.Records[0].attributes.SentTimestamp)
-        : parseInt(entityKey.timestamp);
+        console.log("message: ");
+        console.log(message);
 
-    let params = message.params;
+        let entity = message.entity;
+        let entityKey = message.key;
+        //if the timestamp doesn't exist, then this is a new record and we should add it
+        entityKey.timestamp = (!entityKey.timestamp)
+            ? parseInt(record.attributes.SentTimestamp)
+            : parseInt(entityKey.timestamp);
 
-    let update_expression = "SET ";
-    let expression_attribute_names = {};
-    let expression_attribute_values = {};
+        let params = message.params;
 
-    let current_element = 0;
+        let update_expression = "SET ";
+        let expression_attribute_names = {};
+        let expression_attribute_values = {};
 
-    Object
-        .keys(message.params)
-        .forEach((key) => {
-            current_element++;
-            let comma = (current_element === Object.keys(params).length)
-                ? ""
-                : ", ";
-            update_expression = update_expression.concat("#" + key + " = :" + key + comma);
-            expression_attribute_names["#" + key] = key;
-            expression_attribute_values[":" + key] = params[key];
-        });
-    console.log(update_expression);
-    console.log(expression_attribute_names);
-    console.log(expression_attribute_values);
+        let current_element = 0;
 
-    //look for empty or null inputs
-    if (entity === null || entity === "") {
-        //callback("Sent empty entity;", null);
-    } else {
-        entity = entity.trim();
-    }
-
-    var docClient = new AWS
-        .DynamoDB
-        .DocumentClient({convertEmptyValues: true, endpoint: "dynamodb.us-west-1.amazonaws.com"});
-
-    console.log(entity);
-    console.log(entityKey);
-
-    var db_params = {
-        TableName: entity,
-        Key: entityKey,
-        "UpdateExpression": update_expression,
-        "ExpressionAttributeNames": expression_attribute_names,
-        "ExpressionAttributeValues": expression_attribute_values,
-        "ReturnValues": "ALL_NEW"
-    };
-
-    console.log('executing updateObjectPromise');
-
-    await docClient
-        .update(db_params)
-        .promise()
-        .then(async(item) => {
-            console.log("item: ");
-            console.log(item);
-            //here we want to broadcast an sns message indicating what we just did:
-            let response_event_type = "";
-            switch (event_type) {
-                case "open.new.request":
-                    response_event_type = "new.request.opened";
-                    break;
-                case "update.request.status":
-                    response_event_type = "request.status.updated";
-                    break;
-            }
-
-            await publishSNSMessage({
-                "from": message.from,
-                "to": message.to,
-                "params": {
-                    "type": response_event_type,
-                    "request": item.Attributes
-                }
-            }, response_event_type, item.Attributes.status, flow_sid).then(() => {
-                console.log(entity + " update");
-                console.log(item);
-                return item;
+        Object
+            .keys(message.params)
+            .forEach((key) => {
+                current_element++;
+                let comma = (current_element === Object.keys(params).length)
+                    ? ""
+                    : ", ";
+                update_expression = update_expression.concat("#" + key + " = :" + key + comma);
+                expression_attribute_names["#" + key] = key;
+                expression_attribute_values[":" + key] = params[key];
             });
-        })
-        .catch((error) => {
-            console.log("ERROR: ");
-            console.log(error);
-            return error;
-        });
+        console.log(update_expression);
+        console.log(expression_attribute_names);
+        console.log(expression_attribute_values);
 
-    console.log("Here's an item.");
-    // }); const response = {     statusCode: 200,     body: JSON.stringify(bod + "
-    // and hello from me!") }; return response;
+        //look for empty or null inputs
+        if (entity === null || entity === "") {
+            //callback("Sent empty entity;", null);
+        } else {
+            entity = entity.trim();
+        }
+
+        var docClient = new AWS
+            .DynamoDB
+            .DocumentClient({convertEmptyValues: true, endpoint: "dynamodb.us-west-1.amazonaws.com"});
+
+        console.log(entity);
+        console.log(entityKey);
+
+        var db_params = {
+            TableName: entity,
+            Key: entityKey,
+            "UpdateExpression": update_expression,
+            "ExpressionAttributeNames": expression_attribute_names,
+            "ExpressionAttributeValues": expression_attribute_values,
+            "ReturnValues": "ALL_NEW"
+        };
+
+        console.log('executing updateObjectPromise');
+
+        await docClient
+            .update(db_params)
+            .promise()
+            .then(async(item) => {
+                console.log("item: ");
+                console.log(item);
+                //here we want to broadcast an sns message indicating what we just did:
+                let response_event_type = "";
+                switch (event_type) {
+                    case "open.new.request":
+                        response_event_type = "new.request.opened";
+                        break;
+                    case "update.request.status":
+                        response_event_type = "request.status.updated";
+                        break;
+                }
+
+                await publishSNSMessage({
+                    "from": message.from,
+                    "to": message.to,
+                    "params": {
+                        "type": response_event_type,
+                        "request": item.Attributes
+                    }
+                }, response_event_type, item.Attributes.status, flow_sid).then(() => {
+                    console.log(entity + " update");
+                    console.log(item);
+                    return item;
+                });
+            })
+            .catch((error) => {
+                console.log("ERROR: ");
+                console.log(error);
+                return error;
+            });
+
+    });
+
 };
