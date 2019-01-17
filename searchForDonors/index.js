@@ -65,9 +65,9 @@ exports.handler = async(event) => {
     // in this function we need ot do a geo search based on the incoming
     // latitude/longitudes of the donor.  then we need to either send out no donors
     // found message or a donors found along with a list of the donor phone numbers
-    // so we can alert them later.  i believe we need to save that list of donors
-    // to the request record so we know who we contacted later.  we may need that
-    // list in order to send updates and cancellation notifications let's parse this
+    // so we can alert them later.  i believe we need to save that list of donors to
+    // the request record so we know who we contacted later.  we may need that list
+    // in order to send updates and cancellation notifications let's parse this
     // incoming record let's parse this incoming record
 
     await asyncForEach(event.Records, async(record) => {
@@ -101,7 +101,15 @@ exports.handler = async(event) => {
             }
         })
         // Print the results, an array of DynamoDB.AttributeMaps
-            .then(async(results) => {
+            .then(async(volunteers) => {
+
+            let results = [];
+            volunteers.map((volunteer) => {
+                if (volunteer.alerts.BOOL) 
+                    results.push(volunteer);
+                }
+            );
+
             await publishSNSMessage({
                 "from": message.from,
                 "to": message.to,
@@ -115,7 +123,7 @@ exports.handler = async(event) => {
                     }
             }, (results.length === 0)
                 ? "no.donors.in.area"
-                : "donors.in.area", flow_sid).then(async(data) => {
+                : "donors.in.area", flow_sid).then(async() => {
                 //now let's notify the donors we need an asynch foreach
                 if (results.length > 0) {
 
