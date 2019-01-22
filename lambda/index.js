@@ -146,7 +146,7 @@ exports.handler = async(event) => {
                 //here we want to broadcast an sns message indicating what we just did:
                 let response_event_type = "";
                 switch (event_type) {
-                    case "open.new.request":
+                    case "upsert.new.request":
                         response_event_type = "new.request.opened";
                         break;
                     case "update.request.status":
