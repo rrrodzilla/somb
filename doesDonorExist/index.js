@@ -93,27 +93,63 @@ exports.handler = async(event) => {
             .promise();
 
         await queryPromise.then(async(results) => {
-            //then send a message based on whether something was found or not
-            let geo = (results.Items.length === 0)
-                ? null
-                : JSON.parse(results.Items[0].geoJson);
-            console.log(geo);
-            await publishSNSMessage({
+            //here we need to determine if this donor exists
+            let donor_exists = (results.Items.length > 0);
+
+            let post_event_type = (donor_exists)
+                ? "donor.exists"
+                : "donor.does.not.exist";
+
+            let geo = (donor_exists)
+                ? JSON.parse(results.Items[0].geoJson)
+                : null;
+
+            //if not, we can simply forward the donor.exists message
+            let msg_params = {
                 "from": message.from,
                 "to": message.to,
-                "params": (results.Items.length === 0)
+                "params": (donor_exists)
                     ? {
-                        "type": "donor.does.not.exist"
-                    }
-                    : {
-                        "type": "donor.exists",
+                        "type": post_event_type,
                         "request": results.Items[0],
                         "lat": geo.coordinates[1],
                         "lon": geo.coordinates[0]
                     }
-            }, (results.Items.length === 0)
-                ? "donor.does.not.exist"
-                : "donor.exists", flow_sid).then((data) => {
+                    : {
+                        "type": post_event_type
+                    }
+            };
+
+            // if this donor does exist we need to inspect the message to see if any
+            // commands were sent
+            let potential_commands = message
+                .body
+                .toLowerCase()
+                .split(" ");
+
+            if (potential_commands.length > 1) {
+                console.log(potential_commands[0]);
+                switch (potential_commands[0]) {
+                    case "give" || "deliver" || "both":
+                        if (potential_commands.length > 1) {
+                            //ok we found a command, let's decorate our message before sending it out
+                            let need_request_id = potential_commands[1];
+                            post_event_type = "donor.request.command";
+                            msg_params.params = {
+                                "type": post_event_type,
+                                "command": potential_commands[0],
+                                "need_request_id": need_request_id,
+                                "donor": results.Items[0]
+                            };
+                            break;
+                        } else 
+                            break;
+                        default:
+                        break;
+                }
+            }
+
+            await publishSNSMessage(msg_params, post_event_type, flow_sid).then((data) => {
                 return;
             });
 
