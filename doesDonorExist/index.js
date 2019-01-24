@@ -60,24 +60,16 @@ async function asyncForEach(array, callback) {
 
 exports.handler = async(event) => {
 
+    var docClient = new AWS
+        .DynamoDB
+        .DocumentClient({endpoint: "dynamodb.us-west-1.amazonaws.com"});
+
     await asyncForEach(event.Records, async(record) => {
+
         //let's parse this incoming record
-        let message = JSON.parse(record.body);
-        let event_type = record.messageAttributes["event.type"].stringValue;
-        let flow_sid = record.messageAttributes["event.flow"].stringValue;
-
-        console.log("INCOMING RECORD.MESSAGE: ");
-        console.log("EVENT TYPE: " + event_type);
-        //need to parse twice since the json gets escaped twice
-
-        console.log("message: ");
-        console.log(message);
+        let {message, flow_sid} = parseRecord(record);
 
         //we want to check the database for an existing open issue for this user
-
-        var docClient = new AWS
-            .DynamoDB
-            .DocumentClient({endpoint: "dynamodb.us-west-1.amazonaws.com"});
 
         var params = {
             TableName: "volunteers",
@@ -93,6 +85,7 @@ exports.handler = async(event) => {
             .promise();
 
         await queryPromise.then(async(results) => {
+
             //here we need to determine if this donor exists
             let donor_exists = (results.Items.length > 0);
 
@@ -105,20 +98,7 @@ exports.handler = async(event) => {
                 : null;
 
             //if not, we can simply forward the donor.exists message
-            let msg_params = {
-                "from": message.from,
-                "to": message.to,
-                "params": (donor_exists)
-                    ? {
-                        "type": post_event_type,
-                        "request": results.Items[0],
-                        "lat": geo.coordinates[1],
-                        "lon": geo.coordinates[0]
-                    }
-                    : {
-                        "type": post_event_type
-                    }
-            };
+            let msg_params = buildParams(message, donor_exists, post_event_type, results, geo);
 
             // if this donor does exist we need to inspect the message to see if any
             // commands were sent
@@ -130,7 +110,9 @@ exports.handler = async(event) => {
             if (potential_commands.length > 1) {
                 console.log(potential_commands[0]);
                 switch (potential_commands[0]) {
-                    case "give" || "deliver" || "both":
+                    case "give":
+                    case "deliver":
+                    case "provide":
                         if (potential_commands.length > 1) {
                             //ok we found a command, let's decorate our message before sending it out
                             let need_request_id = potential_commands[1];
@@ -138,18 +120,18 @@ exports.handler = async(event) => {
                             msg_params.params = {
                                 "type": post_event_type,
                                 "command": potential_commands[0],
-                                "need_request_id": need_request_id,
+                                "request_id": need_request_id,
                                 "donor": results.Items[0]
                             };
                             break;
-                        } else 
-                            break;
-                        default:
+                        }
+                        break;
+                    default:
                         break;
                 }
             }
 
-            await publishSNSMessage(msg_params, post_event_type, flow_sid).then((data) => {
+            await publishSNSMessage(msg_params, post_event_type, flow_sid).then(() => {
                 return;
             });
 
@@ -158,3 +140,35 @@ exports.handler = async(event) => {
     });
 
 };
+
+function buildParams(message, donor_exists, post_event_type, results, geo) {
+    return {
+        "from": message.from,
+        "to": message.to,
+        "params": (donor_exists)
+            ? {
+                "type": post_event_type,
+                "request": results.Items[0],
+                "lat": geo.coordinates[1],
+                "lon": geo.coordinates[0]
+            }
+            : {
+                "type": post_event_type
+            }
+    };
+}
+
+function parseRecord(record) {
+    let message = JSON.parse(record.body);
+    let event_type = record.messageAttributes["event.type"].stringValue;
+    let flow_sid = record.messageAttributes["event.flow"].stringValue;
+
+    console.log("INCOMING RECORD.MESSAGE: ");
+    console.log("EVENT TYPE: " + event_type);
+    //need to parse twice since the json gets escaped twice
+
+    console.log("message: ");
+    console.log(message);
+
+    return {message, flow_sid};
+}

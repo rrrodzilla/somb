@@ -1,0 +1,23 @@
+{
+  "name": "somb",
+  "version": "1.0.0",
+  "description": "shirt off my back backend code",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/rrrodzilla/somb.git"
+  },
+  "author": "Neyborly Company",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/rrrodzilla/somb/issues"
+  },
+  "homepage": "https://github.com/rrrodzilla/somb#readme",
+  "devDependencies": {
+    "eslint": "^5.12.1",
+    "eslint-config-google": "^0.11.0"
+  }
+}
