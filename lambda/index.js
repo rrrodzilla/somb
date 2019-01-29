@@ -80,12 +80,18 @@ exports.handler = async(event) => {
         .config
         .update({region: "us-west-1"});
 
+    var docClient = new AWS
+        .DynamoDB
+        .DocumentClient({convertEmptyValues: true, endpoint: "dynamodb.us-west-1.amazonaws.com"});
+
     await asyncForEach(event.Records, async(record) => {
         //let's parse this incoming record
         let {event_type, message, flow_sid} = parseRecord(record);
 
         let entity = message.entity;
         let entityKey = message.key;
+        console.log(entity);
+        console.log(entityKey);
         //if the timestamp doesn't exist, then this is a new record and we should add it
         entityKey.timestamp = (!entityKey.timestamp)
             ? parseInt(record.attributes.SentTimestamp, 10)
@@ -93,12 +99,6 @@ exports.handler = async(event) => {
 
         var db_params = buildDBParams(message, entity, entityKey);
 
-        var docClient = new AWS
-            .DynamoDB
-            .DocumentClient({convertEmptyValues: true, endpoint: "dynamodb.us-west-1.amazonaws.com"});
-
-        console.log(entity);
-        console.log(entityKey);
         console.log('executing updateObjectPromise');
 
         await docClient
@@ -108,15 +108,15 @@ exports.handler = async(event) => {
                 console.log("item: ");
                 console.log(item);
                 //here we want to broadcast an sns message indicating what we just did:
-                let response_event_type = "";
-                switch (event_type) {
-                    case "upsert.new.request":
-                        response_event_type = "new.request.opened";
-                        break;
-                    case "update.request.status":
-                        response_event_type = "request.status.updated";
-                        break;
-                }
+                let response_event_type = event_type + ".complete";
+                // switch (event_type) {
+                //     case "upsert.new.request":
+                //         response_event_type = "new.request.opened";
+                //         break;
+                //     case "update.request.status":
+                //         response_event_type = "request.status.updated";
+                //         break;
+                // }
 
                 await publishSNSMessage({
                     "from": message.from,

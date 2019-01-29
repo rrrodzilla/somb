@@ -1,10 +1,4 @@
 const client = require('twilio')(process.env.ACCOUNTSID, process.env.AUTHTOKEN);
-const FLOWS = {
-    "initiate.twilio.flow": "FW5aa2094eef2a5efade132ed9a4998d6f",
-    "new.incoming.message": "FW5aa2094eef2a5efade132ed9a4998d6f",
-    "open.issue.cancelled": "FW5aa2094eef2a5efade132ed9a4998d6f",
-    "open.issue.found": "FW5aa2094eef2a5efade132ed9a4998d6f"
-};
 exports.handler = async(event) => {
 
     //let's parse this incoming record
@@ -19,9 +13,10 @@ exports.handler = async(event) => {
     console.log("message: ");
     console.log(message);
 
-    if (event_type == "request.status.updated") 
-    message.params.type = "open.request.cancelled";
-    
+    if (event_type === "update.request.status.complete") {
+        message.params.type = "open.request.cancelled";
+    }
+
     console.log("trying studio flow call");
     try {
         var smsMsg = client
@@ -29,7 +24,7 @@ exports.handler = async(event) => {
             .flows(flow_sid)
             .executions
             .create({to: message.to, from: message.from, parameters: message.params});
-        await smsMsg.then(execution => {
+        await smsMsg.then(() => {
             return;
         });
     } catch (err) {
