@@ -68,6 +68,32 @@ async function broadcastMsg(from, to, requestId, eventType, flow_sid) {
 
 }
 
+async function updateStatusMsg(from, to, request_obj, status, flow_sid) {
+    let msg_params = {
+        "from": from,
+        "to": to,
+        "entity": "need_request",
+        "key": {
+            "phone_number": request_obj.phone_number,
+            "timestamp": request_obj.timestamp
+        },
+        "params": {
+            "status": status,
+            "donor": (request_obj.donor)
+                ? request_obj.donor
+                : {},
+            "deliverer": (request_obj.deliverer)
+                ? request_obj.deliverer
+                : {}
+        }
+    };
+
+    await publishSNSMessage(msg_params, "update.request.status.to." + status, flow_sid).then(() => {
+        return;
+    });
+
+}
+
 async function asyncForEach(array, callback) {
     for (let index = 0; index < array.length; index++) {
         await callback(array[index], index, array);
@@ -143,12 +169,20 @@ exports.handler = async(event) => {
                                 response_message = EXPIRED_REQUEST_RESPONSE;
                                 break;
                             case STATUS_OPEN:
+                                need_request.donor = message.to;
+                                await updateStatusMsg(message.from, message.to, need_request, STATUS_DONOR_FOUND, flow_sid).then(() => {
+                                    return;
+                                });
                                 //updated_status = STATUS_DONOR_FOUND; //and add donor to request record
                                 break;
                             case STATUS_DONOR_FOUND:
-                                //response_message = DONOR_EXISTS_RESPONSE;
+                                response_message = DONOR_EXISTS_RESPONSE;
                                 break;
                             case STATUS_DELIVERER_FOUND:
+                                need_request.donor = message.to;
+                                await updateStatusMsg(message.from, message.to, need_request, STATUS_AWAITING_DELIVERY, flow_sid).then(() => {
+                                    return;
+                                });
                                 //updated_status = STATUS_AWAITING_DELIVERY; //and add donor to request record
                                 break;
                             case STATUS_AWAITING_DELIVERY:
@@ -168,9 +202,17 @@ exports.handler = async(event) => {
                                 response_message = EXPIRED_REQUEST_RESPONSE;
                                 break;
                             case STATUS_OPEN:
+                                need_request.deliverer = message.to;
+                                await updateStatusMsg(message.from, message.to, need_request, STATUS_DELIVERER_FOUND, flow_sid).then(() => {
+                                    return;
+                                });
                                 // updated_status = STATUS_DELIVERER_FOUND; //and add donor to request record
                                 break;
                             case STATUS_DONOR_FOUND:
+                                need_request.deliverer = message.to;
+                                await updateStatusMsg(message.from, message.to, need_request, STATUS_AWAITING_DELIVERY, flow_sid).then(() => {
+                                    return;
+                                });
                                 // updated_status = STATUS_AWAITING_DELIVERY; //and add donor to request record
                                 break;
                             case STATUS_DELIVERER_FOUND:
@@ -193,6 +235,11 @@ exports.handler = async(event) => {
                                 response_message = EXPIRED_REQUEST_RESPONSE;
                                 break;
                             case STATUS_OPEN:
+                                need_request.deliverer = message.to;
+                                need_request.donor = message.to;
+                                await updateStatusMsg(message.from, message.to, need_request, STATUS_AWAITING_DELIVERY, flow_sid).then(() => {
+                                    return;
+                                });
                                 // updated_status = STATUS_AWAITING_DELIVERY; //and add donor to request record
                                 break;
                             case STATUS_DONOR_FOUND:
@@ -211,10 +258,12 @@ exports.handler = async(event) => {
                         break;
 
                 }
+                if (response_message !== "") {
+                    await broadcastMsg(message.from, message.to, message.params.request_id, response_message, flow_sid).then(() => {
+                        return;
+                    });
 
-                await broadcastMsg(message.from, message.to, message.params.request_id, response_message, flow_sid).then(() => {
-                    return;
-                });
+                }
 
             }
 
